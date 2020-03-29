@@ -11,4 +11,12 @@ pub struct RoughError {
     msg: String,
 }
 
+impl RoughError {
+    pub fn new(message) -> RoughError {
+        RoughError {
+            msg: message,
+        }
+    }
+}
+
 pub type RoughResult<T> = Result<T, Vec<RoughError>>

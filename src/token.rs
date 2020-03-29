@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum TokenType {
-    Illegal, // With Result is this necessary?
+    //Illegal, // With Result is this necessary?
     // Trying it without this token since Lexer is an iterator.
     //EOF,
 
@@ -15,6 +15,7 @@ pub enum TokenType {
     Colon,
     Comma,
     RBracket,
+    Hash,
     If,
     Else,
     Assign,
@@ -37,6 +38,7 @@ impl fmt::Display for TokenType {
             Token::LBracket => write!(f, "["),
             Token::Colon => write!(f, ":"),
             Token::Comma => write!(f, ","),
+            Token::Hash => write!(f, "#"),
             Token::RBracket => write!(f, "]"),
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),

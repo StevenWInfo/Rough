@@ -1,5 +1,6 @@
 use rough::token::{ Token, TokenType };
 use rough::lexer::Lexer;
+use rough::error::RoughResult;
 
 #[test]
 fn test_simple_tokens() {
@@ -15,9 +16,10 @@ fn test_simple_tokens() {
         ]),
     ];
 
-    for (test, (given, expected)) in tests.iter().enumerate {
+    for (test, (given, expected)) in tests.iter().enumerate() {
         let lexer = Lexer::new(given);
-        let lexer_ouput = lexer.collect();
-        assert_eq!(lexer_output, expected, "Test{}: {} not equal to {}", test, lexer_output, expected);
+        let lexer_output: Vec<RoughResult<Token>> = lexer.collect();
+        let expected_result: Vec<RoughResult<Token>> = expected.into_iter().map(|exp| Ok(exp.clone())).collect();
+        assert_eq!(lexer_output, expected_result, "Test{:?}: {:?} not equal to {:?}", test, lexer_output, expected_result);
     }
 }

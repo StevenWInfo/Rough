@@ -1,38 +1,42 @@
 use crate::token::{ TokenType, Token };
-use crake::error::RoughResult;
+use crate::error::{ RoughError, RoughResult };
+use std::str::CharIndices;
+use std::iter::Peekable;
 
 /// AKA Scanner
-pub struct Lexer {
-    source: &str,
-    source_iter: Peekable<CharIndices>,
+pub struct Lexer<'a> {
+    // Could maybe be a string slice with lifetimes?
+    source: &'a str,
+    // Should probably use a more limited lifetime.
+    source_iter: Peekable<CharIndices<'a>>,
 }
 
-impl Lexer {
-    pub fn new(input: String) -> Lexer {
-        let input_str = input.as_str();
+impl Lexer<'_> {
+    pub fn new(input: &str) -> Lexer {
         Lexer {
-            source: input_str,
-            source_iter: input_str.char_indices().peekable(),
+            source: input,
+            source_iter: input.char_indices().peekable(),
         }
     }
 
     fn read_identifier(&mut self, first: char) -> String {
-        let string = format!("{}", first);
+        let mut string = format!("{}", first);
 
-        while Some(ch) = self.source_iter.peek() {
-            if !is_letter(ch) {
+        while let Some((_, ch)) = self.source_iter.peek() {
+            if !is_letter(*ch) {
                 return string
             };
+            string = format!("{}{}", string, ch.clone());
             self.source_iter.next();
-            string = format!("{}{}", string, ch)
         }
 
         string
     }
 
-    fn read_string(&mut self, first: char) -> RoughResult<String> {
-        let string = format!("{}", first);
-        for ch in self.source_iter {
+    fn read_string(&mut self) -> RoughResult<String> {
+        let mut string = "".to_string();
+
+        while let Some((_, ch)) = self.source_iter.next() {
             if ch == '"' {
                 break
             };
@@ -40,40 +44,36 @@ impl Lexer {
             string = format!("{}{}", string, ch);
             
             if self.source_iter.peek() == None {
-                return Err(vec!(RoughError::new("File ended before string closed"
+                return Err(vec!(RoughError::new("File ended before string closed".to_string())));
             };
         }
 
-        Ok(string)
+        Ok(string.to_string())
     }
 
     fn read_number(&mut self, first: char) -> f64 {
-        let number = format!("{}", first);
+        let mut number = format!("{}", first);
 
-        while Some(ch) = self.source_iter.peek() {
-            if !is_letter(ch) {
-                return number.parse::<i64>().unwrap()
+        while let Some((_, ch)) = self.source_iter.peek() {
+            if !is_letter(*ch) {
+                return number.parse::<f64>().unwrap()
             };
+            number = format!("{}{}", number, ch.clone());
             self.source_iter.next();
-            number = format!("{}{}", number, ch)
         }
 
-        number.parse::<i64>().unwrap()
+        number.parse::<f64>().unwrap()
     }
 }
 
-impl Iterator for Lexer {
+impl Iterator for Lexer<'_> {
     type Item = RoughResult<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current >= self.source.len() {
-            return None
-        }
-
-        let (cur_char, start) = match self.source_iter.next() {
+        let (start, cur_char) = match self.source_iter.next() {
             Some(char_index) => char_index,
-            None => Return None
-        }
+            None => return None
+        };
 
         let token_type = match cur_char {
             '(' => TokenType::LParen,
@@ -84,40 +84,47 @@ impl Iterator for Lexer {
             '|' => TokenType::Pipe,
             '#' => TokenType::Hash,
             '\n' => {
-                if let Some('\r') = self.source_iter.peek() {
+                if let Some((_, '\r')) = self.source_iter.peek() {
                     self.source_iter.next();
                 }
                 TokenType::Newline
             },
             '\r' => {
-                if let Some('\n') = self.source_iter.peek() {
+                if let Some((_, '\n')) = self.source_iter.peek() {
                     self.source_iter.next();
                 }
                 TokenType::Newline
             }
-            ':' => if let Some('=') = self.source_iter.peek() {
+            ':' => if let Some((_, '=')) = self.source_iter.peek() {
                 TokenType::Assign
             } else {
                 TokenType::Colon
             },
             '\t' => TokenType::Tab,
             // Maybe make this configurable
-            ' ' => if source.len() >= start + 4 && self.source[start..(start + 3)] == "    " {
-                self.source_iter.take(3).collect();
+            ' ' => if self.source.len() >= start + 4 && &self.source[start..(start + 3)] == "    " {
+                // I feel like there's got to be some way to do something like this.
+                //self.source_iter.take(3).for_each(drop);
+                self.source_iter.next();
+                self.source_iter.next();
+                self.source_iter.next();
                 TokenType::Tab
             } else {
                 TokenType::Space
             },
             // TODO escaping double quotes
-            '"' => TokenType::Str(self.read_string(other)?),
+            '"' => match self.read_string() {
+                Ok(string) => TokenType::Str(string),
+                Err(msg) => return Some(Err(msg)),
+            }
             other => if other.is_ascii_digit() {
-                TokenType::Int(self.read_number(other))
+                TokenType::Number(self.read_number(other))
             } else if is_letter(other) {
                 lookup_ident(self.read_identifier(other))
             } else {
-                return Err(vec![RoughError::new(
+                return Some(Err(vec![RoughError::new(
                                format!("Lexer error with character {}", other)
-                               )]);
+                               )]));
             }
         };
 
@@ -125,8 +132,8 @@ impl Iterator for Lexer {
     }
 }
 
-fn check_keyword(word: String) -> Option<Token> {
-    match word.as_str() {
+fn check_keyword(word: &str) -> Option<TokenType> {
+    match word {
         "if" => Some(TokenType::If),
         "else" => Some(TokenType::Else),
         "in" => Some(TokenType::In),
@@ -134,8 +141,8 @@ fn check_keyword(word: String) -> Option<Token> {
     }
 }
 
-fn lookup_ident(ident: String) -> Token {
-    match check_keyword(ident) {
+fn lookup_ident(ident: String) -> TokenType {
+    match check_keyword(&ident) {
         Some(token) => token,
         None => TokenType::Ident(ident)
     }

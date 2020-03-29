@@ -7,16 +7,17 @@
 // This might change quite a bit.
 // Might have more than one error type.
 // Might have a list of messages, errors, etc.
+#[derive(Debug, PartialEq)]
 pub struct RoughError {
     msg: String,
 }
 
 impl RoughError {
-    pub fn new(message) -> RoughError {
+    pub fn new(message: String) -> RoughError {
         RoughError {
             msg: message,
         }
     }
 }
 
-pub type RoughResult<T> = Result<T, Vec<RoughError>>
+pub type RoughResult<T> = Result<T, Vec<RoughError>>;

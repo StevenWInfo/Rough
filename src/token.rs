@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
     //Illegal, // With Result is this necessary?
     // Trying it without this token since Lexer is an iterator.
@@ -19,6 +19,7 @@ pub enum TokenType {
     If,
     Else,
     Assign,
+    In,
     Pipe,
     Space,
     Tab,
@@ -28,7 +29,7 @@ pub enum TokenType {
 impl fmt::Display for TokenType {
     fn fmt(&self, f:&mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            Token::Illegal => write!(f, "Illegal"),
+            //Token::Illegal => write!(f, "Illegal"),
             //Token::EOF => write!(f, "EOF"),
             Token::Ident(name) => write!(f, "{}", name),
             Token::Number(num) => write!(f, "{}", num),
@@ -43,6 +44,7 @@ impl fmt::Display for TokenType {
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
             Token::Assign => write!(f, ":="),
+            Token::In => write!(f, "in"),
             Token::Pipe => write!(f, "|"),
             Token::Space => write!(f, " "),
             // Might want to make this configurable
@@ -52,10 +54,19 @@ impl fmt::Display for TokenType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Token {
-    token: TokenType,
+    token_type: TokenType,
     /// For finding the token later, potentially when showing errors.
     /// It's the position of the first character scanned in token.
     position: usize,
+}
+
+impl Token {
+    pub fn new (token_type: TokenType, position: usize) -> Token{
+        Token {
+            token_type: token_type,
+            position: position,
+        }
+    }
 }

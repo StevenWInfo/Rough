@@ -1,34 +1,64 @@
-use crate::token::Token;
+use crate::token::{ TokenType, Token };
 use crake::error::RoughResult;
 
 /// AKA Scanner
 pub struct Lexer {
-    pub source: Vec<char>,
-    start: usize,
-    current: usize,
+    source: &str,
+    source_iter: Peekable<CharIndices>,
 }
 
 impl Lexer {
     pub fn new(input: String) -> Lexer {
+        let input_str = input.as_str();
         Lexer {
-            source: input.chars().collect(),
-            start: 0,
-            current: 0,
+            source: input_str,
+            source_iter: input_str.char_indices().peekable(),
         }
     }
 
-    fn advance(&mut self) -> Option<char> {
-        let cur_char = source[self.current - 1];
-        self.current += 1;
-        cur_char
+    fn read_identifier(&mut self, first: char) -> String {
+        let string = format!("{}", first);
+
+        while Some(ch) = self.source_iter.peek() {
+            if !is_letter(ch) {
+                return string
+            };
+            self.source_iter.next();
+            string = format!("{}{}", string, ch)
+        }
+
+        string
     }
 
-    fn peek(&mut self, extra: usize) -> Option<char> {
-        self.input[self.current + usize]
+    fn read_string(&mut self, first: char) -> RoughResult<String> {
+        let string = format!("{}", first);
+        for ch in self.source_iter {
+            if ch == '"' {
+                break
+            };
+
+            string = format!("{}{}", string, ch);
+            
+            if self.source_iter.peek() == None {
+                return Err(vec!(RoughError::new("File ended before string closed"
+            };
+        }
+
+        Ok(string)
     }
 
-    fn read_identifier(&mut self) -> String {
-        let 
+    fn read_number(&mut self, first: char) -> f64 {
+        let number = format!("{}", first);
+
+        while Some(ch) = self.source_iter.peek() {
+            if !is_letter(ch) {
+                return number.parse::<i64>().unwrap()
+            };
+            self.source_iter.next();
+            number = format!("{}{}", number, ch)
+        }
+
+        number.parse::<i64>().unwrap()
     }
 }
 
@@ -40,56 +70,66 @@ impl Iterator for Lexer {
             return None
         }
 
-        match self.advance() {
-            '(' => Some(Ok(Token::LParen)),
-            ')' => Some(Ok(Token::RParen)),
-            '[' => Some(Ok(Token::LBracket)),
-            ',' => Some(Ok(Token::Comma)),
-            ']' => Some(Ok(Token::RBracket)),
-            '|' => Some(Ok(Token::Pipe)),
-            '#' => Some(Ok(Token::Hash)),
-            // TODO escaping double quotes
+        let (cur_char, start) = match self.source_iter.next() {
+            Some(char_index) => char_index,
+            None => Return None
+        }
+
+        let token_type = match cur_char {
+            '(' => TokenType::LParen,
+            ')' => TokenType::RParen,
+            '[' => TokenType::LBracket,
+            ',' => TokenType::Comma,
+            ']' => TokenType::RBracket,
+            '|' => TokenType::Pipe,
+            '#' => TokenType::Hash,
             '\n' => {
-                if self.peek(0) == '\r' {
-                    self.advance();
+                if let Some('\r') = self.source_iter.peek() {
+                    self.source_iter.next();
                 }
-                Some(Ok(Token::Newline))
+                TokenType::Newline
             },
             '\r' => {
-                if self.peek(0) == '\n' {
-                    self.advance();
+                if let Some('\n') = self.source_iter.peek() {
+                    self.source_iter.next();
                 }
-                Some(Ok(Token::Newline))
+                TokenType::Newline
             }
-            ':' => if self.peek(0) == '=' {
-                Some(Ok(Token::Assign))
+            ':' => if let Some('=') = self.source_iter.peek() {
+                TokenType::Assign
             } else {
-                Some(Ok(Token::Colon))
+                TokenType::Colon
             },
-            ' ' => Some(),
-            '"' => Some(Ok(Token::Str(self.read_string()))),
+            '\t' => TokenType::Tab,
+            // Maybe make this configurable
+            ' ' => if source.len() >= start + 4 && self.source[start..(start + 3)] == "    " {
+                self.source_iter.take(3).collect();
+                TokenType::Tab
+            } else {
+                TokenType::Space
+            },
+            // TODO escaping double quotes
+            '"' => TokenType::Str(self.read_string(other)?),
             other => if other.is_ascii_digit() {
-                Some(Ok(Token::Int(self.read_number())))
-            } else if other.is_ascii_alphabetic() || ch == '_' {
-                lookup_ident(self.read_identifier())
+                TokenType::Int(self.read_number(other))
+            } else if is_letter(other) {
+                lookup_ident(self.read_identifier(other))
             } else {
-                Some(Err(vec!(RoughError::new("Lexer error with character {}"))))
+                return Err(vec![RoughError::new(
+                               format!("Lexer error with character {}", other)
+                               )]);
             }
-                /* I suppose it's better to limit so things like null characters and other devious
-                 * characters don't get interpreted as identifiers.
-            } else {
-                lookup_ident(self.read_identifier())
-            }
-            */
-        }
+        };
+
+        Some(Ok(Token::new(token_type, start)))
     }
 }
 
 fn check_keyword(word: String) -> Option<Token> {
     match word.as_str() {
-        "if" => Some(Token::If),
-        "else" => Some(Token::Else),
-        ":=" => Some(Token::Assign),
+        "if" => Some(TokenType::If),
+        "else" => Some(TokenType::Else),
+        "in" => Some(TokenType::In),
         _ => None
     }
 }
@@ -97,6 +137,11 @@ fn check_keyword(word: String) -> Option<Token> {
 fn lookup_ident(ident: String) -> Token {
     match check_keyword(ident) {
         Some(token) => token,
-        None => Token::Ident(ident)
+        None => TokenType::Ident(ident)
     }
+}
+
+/// Want to expand this later, but wary of things like null characters.
+fn is_letter(ch: char) -> bool {
+    ch.is_ascii_alphabetic() || ch == '_'
 }

@@ -55,7 +55,7 @@ impl Lexer<'_> {
         let mut number = format!("{}", first);
 
         while let Some((_, ch)) = self.source_iter.peek() {
-            if !is_letter(*ch) {
+            if !ch.is_ascii_digit() {
                 return number.parse::<f64>().unwrap()
             };
             number = format!("{}{}", number, ch.clone());
@@ -96,13 +96,14 @@ impl Iterator for Lexer<'_> {
                 TokenType::Newline
             }
             ':' => if let Some((_, '=')) = self.source_iter.peek() {
+                self.source_iter.next();
                 TokenType::Assign
             } else {
                 TokenType::Colon
             },
             '\t' => TokenType::Tab,
             // Maybe make this configurable
-            ' ' => if self.source.len() >= start + 4 && &self.source[start..(start + 3)] == "    " {
+            ' ' => if self.source.len() >= start + 4 && &self.source[start..(start + 4)] == "    " {
                 // I feel like there's got to be some way to do something like this.
                 //self.source_iter.take(3).for_each(drop);
                 self.source_iter.next();

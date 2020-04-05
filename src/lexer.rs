@@ -5,9 +5,7 @@ use std::iter::Peekable;
 
 /// AKA Scanner
 pub struct Lexer<'a> {
-    // Could maybe be a string slice with lifetimes?
     source: &'a str,
-    // Should probably use a more limited lifetime.
     source_iter: Peekable<CharIndices<'a>>,
 }
 

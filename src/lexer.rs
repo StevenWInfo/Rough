@@ -34,19 +34,22 @@ impl Lexer<'_> {
     fn read_string(&mut self) -> RoughResult<String> {
         let mut string = "".to_string();
 
+        let mut closed = false;
+
         while let Some((_, ch)) = self.source_iter.next() {
             if ch == '"' {
+                closed = true;
                 break
             };
 
             string = format!("{}{}", string, ch);
-            
-            if self.source_iter.peek() == None {
-                return Err(vec!(RoughError::new("File ended before string closed".to_string())));
-            };
         }
 
-        Ok(string.to_string())
+        if !closed {
+            Err(vec!(RoughError::new("File ended before string closed".to_string())))
+        } else {
+            Ok(string.to_string())
+        }
     }
 
     fn read_number(&mut self, first: char) -> f64 {
@@ -61,6 +64,24 @@ impl Lexer<'_> {
         }
 
         number.parse::<f64>().unwrap()
+    }
+
+    fn read_comment(&mut self) -> RoughResult<String> {
+        let mut comment = "".to_string();
+
+        while let Some((_, ch)) = self.source_iter.peek() {
+            self.source_iter.next();
+            if ch == '\n' {
+                break
+            } else if (ch == '*' && self.source_iter.peek() == '#') {
+                self.source_iter.next();
+                break
+            };
+
+            comment = format!("{}{}", comment, ch);
+        }
+
+        Ok(comment.to_string())
     }
 }
 
@@ -80,7 +101,7 @@ impl Iterator for Lexer<'_> {
             ',' => TokenType::Comma,
             ']' => TokenType::RBracket,
             '|' => TokenType::Pipe,
-            '#' => TokenType::Hash,
+            '#' => TokenType::Comment(,
             '\n' => {
                 if let Some((_, '\r')) = self.source_iter.peek() {
                     self.source_iter.next();

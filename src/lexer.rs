@@ -31,6 +31,7 @@ impl Lexer<'_> {
         string
     }
 
+    // TODO implement character escaping
     fn read_string(&mut self) -> RoughResult<String> {
         let mut string = "".to_string();
 
@@ -49,6 +50,15 @@ impl Lexer<'_> {
             Err(vec!(RoughError::new("File ended before string closed".to_string())))
         } else {
             Ok(string.to_string())
+        }
+    }
+
+    // Could put operator definition here or in parser.
+    fn read_operator(&mut self, first: char) -> RoughResult<String> {
+        let mut op = vec![];
+
+        while let Some((_, ch)) = self.source_iter.peek() {
+            if !
         }
     }
 
@@ -136,16 +146,17 @@ impl Iterator for Lexer<'_> {
             '"' => match self.read_string() {
                 Ok(string) => TokenType::Str(string),
                 Err(msg) => return Some(Err(msg)),
-            }
-            other => if other.is_ascii_digit() {
-                TokenType::Number(self.read_number(other))
-            } else if is_letter(other) {
-                lookup_ident(self.read_identifier(other))
-            } else {
-                return Some(Err(vec![RoughError::new(
+            },
+
+            other if is_op_char(other) => self.read_operator(other),
+
+            other if other.is_ascii_digit() => TokenType::Number(self.read_number(other)),
+                
+            other if is_letter(other) => lookup_ident(self.read_identifier(other)),
+
+            _ => return Some(Err(vec![RoughError::new(
                                format!("Lexer error with character {}", other)
                                )]));
-            }
         };
 
         Some(Ok(Token::new(token_type, start)))
@@ -172,3 +183,11 @@ fn lookup_ident(ident: String) -> TokenType {
 fn is_letter(ch: char) -> bool {
     ch.is_ascii_alphabetic() || ch == '_'
 }
+
+fn is_op_char(ch: char) -> bool {
+    OPERATOR_CHARACTERS.iter()
+        .position(|ch| ch == other)
+        .is_some()
+}
+/// Want to expand this too, but need to start somewhere.
+const OPERATOR_CHARACTERS: [char; 19] = ['!', '$', '%', '&', '*', '+', '.', '/', '<', '=', '>', '?', '@', '\\', '^', '-', '~', '{', '}'];

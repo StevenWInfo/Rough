@@ -1,4 +1,4 @@
-
+use crate::token::TokenType;
 
 pub enum Precedence {
     First = 0,
@@ -13,12 +13,25 @@ pub enum Precedence {
     Tenth,
 }
 
+// Haven't implemented anything making this necessary yet (eventually will)
+fn precedences(token: &TokenType) -> Option<Precedence> {
+    match token {
+        _ => None
+    }
+}
+
+pub enum OperatorType {
+    Prefix,
+    Infix,
+    Postfix,
+}
+
 // Might use this for the evaluator too.
+// Could expand for things like lists, but is it really beneficial?
+// Could maybe parse expression looking for the next symbol in operator, but meh
 pub struct OperatorDefinition {
-    // Need at least one of these three. Can I type check it?
-    prefix: Option<String>,
-    infixes: Vec<String>,
-    postfix: Option<String>,
+    identifier: String,
+    op_type: OperatorType,
     // Could set per parameter, but might be cumbersome.
     short_circuit: bool,
     precedence: Precedence,

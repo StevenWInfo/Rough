@@ -1,5 +1,9 @@
 use crate::token::TokenType;
 
+// Need a way to use operators like normal functions. E.g. Haskells (+)
+// Also, would like a way to use normal functions like operators (for a single instale like
+// Haskell).
+
 pub enum Precedence {
     First = 0,
     Second,
@@ -14,7 +18,7 @@ pub enum Precedence {
 }
 
 // Haven't implemented anything making this necessary yet (eventually will)
-fn precedences(token: &TokenType) -> Option<Precedence> {
+pub fn reserved_precedences(token: &TokenType) -> Option<Precedence> {
     match token {
         _ => None
     }
@@ -32,12 +36,10 @@ pub enum OperatorType {
 pub struct OperatorDefinition {
     identifier: String,
     op_type: OperatorType,
-    // Could set per parameter, but might be cumbersome.
-    short_circuit: bool,
     precedence: Precedence,
 }
 
-impl OperatorDefintion {
+impl OperatorDefinition {
     pub fn param_num(&self) {
         self.infixes.len() + 1
     }

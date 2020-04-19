@@ -16,6 +16,7 @@ pub enum TokenType {
     LBracket,
     Colon,
     Comma,
+    Hash,
     RBracket,
     If,
     Else,
@@ -59,7 +60,7 @@ impl fmt::Display for TokenType {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
-    token_type: TokenType,
+    pub token_type: TokenType,
     /// For finding the token later, potentially when showing errors.
     /// It's the position of the first character scanned in token.
     position: usize,
@@ -71,5 +72,11 @@ impl Token {
             token_type: token_type,
             position: position,
         }
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f:&mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.token_type)
     }
 }

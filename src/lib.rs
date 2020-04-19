@@ -8,3 +8,4 @@ pub mod object;
 pub mod environment;
 pub mod builtin;
 pub mod error;
+pub mod operator;

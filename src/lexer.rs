@@ -7,6 +7,7 @@ use std::iter::Peekable;
 pub struct Lexer<'a> {
     source: &'a str,
     source_iter: Peekable<CharIndices<'a>>,
+    errors: Vec<RoughError>,
 }
 
 impl Lexer<'_> {
@@ -55,11 +56,19 @@ impl Lexer<'_> {
 
     // Could put operator definition here or in parser.
     fn read_operator(&mut self, first: char) -> RoughResult<String> {
-        let mut op = vec![];
+        let mut op = vec![first];
 
         while let Some((_, ch)) = self.source_iter.peek() {
-            if !
+            if !is_op_char(ch) {
+                //return Ok(op.collect());
+                break;
+            };
+
+            op.push(ch);
+            self.source_iter.next();
         }
+
+        Ok(op.iter().collect())
     }
 
     fn read_number(&mut self, first: char) -> f64 {
@@ -67,7 +76,8 @@ impl Lexer<'_> {
 
         while let Some((_, ch)) = self.source_iter.peek() {
             if !ch.is_ascii_digit() {
-                return number.parse::<f64>().unwrap()
+                //return number.parse::<f64>().unwrap()
+                break;
             };
             number = format!("{}{}", number, ch.clone());
             self.source_iter.next();
@@ -83,7 +93,7 @@ impl Lexer<'_> {
             self.source_iter.next();
             if ch == '\n' {
                 break
-            } else if (ch == '*' && self.source_iter.peek() == '#') {
+            } else if ch == '*' && self.source_iter.peek().map(|peek_ch| peek_ch.1 == '#').unwrap_or(false) {
                 self.source_iter.next();
                 break
             };
@@ -96,7 +106,7 @@ impl Lexer<'_> {
 }
 
 impl Iterator for Lexer<'_> {
-    type Item = RoughResult<Token>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (start, cur_char) = match self.source_iter.next() {
@@ -111,7 +121,10 @@ impl Iterator for Lexer<'_> {
             ',' => TokenType::Comma,
             ']' => TokenType::RBracket,
             '|' => TokenType::Pipe,
-            '#' => TokenType::Comment(,
+            '#' => match self.read_comment() {
+                Ok(comment) => TokenType::Comment(comment),
+                error => return self.handle_error(error)),
+            }
             '\n' => {
                 if let Some((_, '\r')) = self.source_iter.peek() {
                     self.source_iter.next();
@@ -145,21 +158,29 @@ impl Iterator for Lexer<'_> {
             // TODO escaping double quotes
             '"' => match self.read_string() {
                 Ok(string) => TokenType::Str(string),
-                Err(msg) => return Some(Err(msg)),
+                error => return self.handle_error(error),
             },
 
-            other if is_op_char(other) => self.read_operator(other),
+            other if is_op_char(other) => match self.read_operator(other) {
+                Ok(op) => TokenType::Operator(op),
+                error => return self.handle_error(error),
+            },
 
             other if other.is_ascii_digit() => TokenType::Number(self.read_number(other)),
                 
             other if is_letter(other) => lookup_ident(self.read_identifier(other)),
 
-            _ => return Some(Err(vec![RoughError::new(
-                               format!("Lexer error with character {}", other)
-                               )]));
+            other => {
+                return self.handle_error(new_error(format!("Lexer error with character {}", other)));
+            }
         };
 
-        Some(Ok(Token::new(token_type, start)))
+        Some(Token::new(token_type, start))
+    }
+
+    fn handle_error(error: RoughError) -> Option<Self::Item> {
+        self.errors.push(error);
+        self.next()
     }
 }
 
@@ -186,7 +207,7 @@ fn is_letter(ch: char) -> bool {
 
 fn is_op_char(ch: char) -> bool {
     OPERATOR_CHARACTERS.iter()
-        .position(|ch| ch == other)
+        .position(|op_ch| op_ch == ch)
         .is_some()
 }
 /// Want to expand this too, but need to start somewhere.

@@ -22,3 +22,7 @@ impl RoughError {
 
 // Is handling multiple errors in the result better or in the lexer/parser/evaluators respectively?
 pub type RoughResult<T> = Result<T, Vec<RoughError>>;
+
+pub fn new_error<T>(msg: String) -> RoughResult<T> {
+    Err(vec![RoughError::new(msg)])
+}

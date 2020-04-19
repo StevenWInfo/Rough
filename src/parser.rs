@@ -3,12 +3,15 @@ use crate::operator::{ OperatorDefinition, Precedence, reserved_precedences, Ope
 use crate::error::{ RoughError, RoughResult, new_error };
 use crate::ast::Expression;
 use crate::token::{ Token, TokenType };
-use std::iter::{ Peekable, Filter };
+use std::iter::{ Peekable };
 
 pub struct Parser<'a> {
+    // I want to have it just be the iterator, but the types for iterators are too annoying to deal
+    // with right now. Figure it out later.
+    tokens: Vec<Token>,
     lexer: Peekable<Lexer<'a>>,
     //lexer: Peekable<Filter<'a>>,
-    operators: Vec<OperatorDefinition>
+    operators: Vec<OperatorDefinition>,
     errors: Vec<RoughError>,
     // Wouldn't be necessary if I could figure out how to return closures
     cur_token: Option<Token>,
@@ -18,24 +21,15 @@ static empty_early_error: RoughError = RoughError::new("Source ended before maki
 
 impl Parser<'_> {
     pub fn new(mut lex: Lexer, operators: Vec<OperatorDefinition>) -> Parser {
-        let mut starting_errors = Vec::new();
-        let mut starting_token = None;
-
-        for result in lex {
-            if let Ok(token) = result {
-                starting_token = token;
-                break;
-            } else {
-                starting_errors.push(result);
-            }
-        }
-
-        Parser {
+        let parser = Parser {
             lexer: lex.peekable(),
+            tokens: lex.collect(),
             operators: operators,
-            errors: starting_errors,
-            cur_token: starting_token,
-        }
+            errors: Vec::new(),
+            cur_token: None,
+        };
+
+        parser.next()
     }
 
     pub fn current_fail(&self) -> RoughResult<Token> {
@@ -46,11 +40,27 @@ impl Parser<'_> {
     }
 
     pub fn next(&mut self) {
-        self.cur_token = self.lexer.next();
+        let token = self.lexer.next();
+        if !ignored(token) {
+            self.cur_token = token;
+        } else {
+            self.next()
+        }
+    }
+
+    fn peek(&self) -> Option<Token> {
+        while let Some(peek_tok) = self.lexer.peek() {
+            if !ignored(peek_tok) {
+                break;
+            }
+            self.lexer.next();
+        }
+
+        self.lexer.peek()
     }
 
     fn next_if_equals(&mut self, expected: TokenType) -> bool {
-        let equals = self.lexer.peek()
+        let equals = self.peek()
             .map(|token| token?.token_type == expected)
             .unwrap_or(false);
 
@@ -96,7 +106,7 @@ impl Parser<'_> {
         let mut exp = prefix_parser(self)?;
 
         // If it finds another Ident, it should assume a function call
-        while self.lexer.peek().is_some() && precedence < self.token_precedence(&self.peek().unwrap()) {
+        while self.peek().is_some() && precedence < self.token_precedence(&self.peek().unwrap()) {
             let infix = match infix_parse_lookup(self.peek().unwrap()) {
                 Some(infix_op) => infix_op,
                 // Is this ok in this implementation?
@@ -159,7 +169,7 @@ fn parse_function_parameters(parser: &mut Parser) -> RoughResult<Vec<String>> {
         if let TokenType::Ident(name) = current.token_type {
             params.push(name.to_string())
         } else {
-             return new_error(format!("Function parameter expected an Ident token but was {}", current)),
+             return new_error(format!("Function parameter expected an Ident token but was {}", current));
         }
     }
 
@@ -292,16 +302,12 @@ fn infix_parse_lookup(token: &Token) -> Option<InfixParseFn> {
 
 // I suppose not ignoring whitespace might break a lot of code currently.
 // Should deal with this sooner rather than later.
-fn ignored(token_result: &RoughResult<Token>) -> bool {
-    if let Ok(token) = token_result {
-        match token.token_type {
-            TokenType::Comment(_) => true,
-            TokenType::Space => true,
-            TokenType::Tab => true,
-            TokenType::Newline => true,
-            _ => false
-        }
-    } else {
-        false
+fn ignored(token: Token) -> bool {
+    match token.token_type {
+        TokenType::Comment(_) => true,
+        TokenType::Space => true,
+        TokenType::Tab => true,
+        TokenType::Newline => true,
+        _ => false
     }
 }

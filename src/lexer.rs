@@ -1,5 +1,5 @@
 use crate::token::{ TokenType, Token };
-use crate::error::{ RoughError, RoughResult };
+use crate::error::{ RoughError, RoughResult, new_error };
 use std::str::CharIndices;
 use std::iter::Peekable;
 
@@ -103,6 +103,11 @@ impl Lexer<'_> {
 
         Ok(comment.to_string())
     }
+
+    fn handle_error(&mut self, error: RoughError) -> Option<Token> {
+        self.errors.push(error);
+        self.next()
+    }
 }
 
 impl Iterator for Lexer<'_> {
@@ -123,7 +128,7 @@ impl Iterator for Lexer<'_> {
             '|' => TokenType::Pipe,
             '#' => match self.read_comment() {
                 Ok(comment) => TokenType::Comment(comment),
-                error => return self.handle_error(error)),
+                error => return self.handle_error(error),
             }
             '\n' => {
                 if let Some((_, '\r')) = self.source_iter.peek() {
@@ -176,11 +181,6 @@ impl Iterator for Lexer<'_> {
         };
 
         Some(Token::new(token_type, start))
-    }
-
-    fn handle_error(error: RoughError) -> Option<Self::Item> {
-        self.errors.push(error);
-        self.next()
     }
 }
 

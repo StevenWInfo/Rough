@@ -5,12 +5,12 @@ use crate::ast::Expression;
 use crate::token::{ Token, TokenType };
 use std::iter::{ Peekable };
 
-pub struct Parser<'a> {
+pub struct Parser<I> where I: Iterator<Item = &Token> {
     // I want to have it just be the iterator, but the types for iterators are too annoying to deal
     // with right now. Figure it out later.
     // (What was I using this field for again?)
     tokens: Vec<Token>,
-    lexer: Peekable<Lexer<'a>>,
+    lexer: Peekable<I>,
     //lexer: Peekable<Filter<'a>>,
     operators: Vec<OperatorDefinition>,
     errors: Vec<RoughError>,
@@ -20,10 +20,10 @@ pub struct Parser<'a> {
 
 static empty_early_error: RoughError = RoughError::new("Source ended before making a valid expression".to_string());
 
-impl Parser<'_> {
-    pub fn new(mut lex: Lexer, operators: Vec<OperatorDefinition>) -> Parser {
+impl Parser<I> {
+    pub fn new(mut lex: Lexer, operators: Vec<OperatorDefinition>) -> Parser<I> {
         // Annoyances made me do this strange dance. Maybe clean up later
-        let tokens = lex.collect();
+        let tokens: Vec<Token> = lex.collect();
 
         let parser = Parser {
             lexer: tokens.iter().peekable(),
@@ -46,15 +46,15 @@ impl Parser<'_> {
 
     pub fn next(&mut self) {
         for token in self.lexer {
-            if !ignored(token) {
-                self.cur_token = token;
+            if !ignored(&token) {
+                self.cur_token = Some(token);
                 return ();
             }
         }
         self.cur_token = None;
     }
 
-    fn peek(&self) -> Option<Token> {
+    fn peek(&self) -> Option<&Token> {
         while let Some(peek_tok) = self.lexer.peek() {
             if !ignored(peek_tok) {
                 break;
@@ -140,21 +140,21 @@ impl Parser<'_> {
     }
 }
 
-fn parse_number(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_number(parser: &mut Parser<I>) -> RoughResult<Expression> {
     match &parser.current_result()?.token_type {
-        TokenType::Number(num) => Ok(Expression::Number(*num)),
+        TokenType::Number(num) => Ok(Expression::Number(num)),
         other => new_error(format!("Expected Number token, but got {}", other).to_string()),
     }
 }
 
-fn parse_string_literal(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_string_literal(parser: &mut Parser<I>) -> RoughResult<Expression> {
     match &parser.current_result()?.token_type {
         TokenType::Str(string) => Ok(Expression::Str(string.to_string())),
         other => new_error(format!("Expected Str token, but got {}", other).to_string()),
     }
 }
 
-fn parse_function_parameters(parser: &mut Parser) -> RoughResult<Vec<String>> {
+fn parse_function_parameters(parser: &mut Parser<I>) -> RoughResult<Vec<String>> {
     let mut params = vec![];
 
     parser.next();
@@ -182,7 +182,7 @@ fn parse_function_parameters(parser: &mut Parser) -> RoughResult<Vec<String>> {
     Ok(params)
 }
 
-fn parse_function_literal(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_function_literal(parser: &mut Parser<I>) -> RoughResult<Expression> {
     Ok(
         Expression::Function(
             parse_function_parameters(parser)?,
@@ -191,7 +191,7 @@ fn parse_function_literal(parser: &mut Parser) -> RoughResult<Expression> {
       )
 }
 
-fn parse_if_expression(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_if_expression(parser: &mut Parser<I>) -> RoughResult<Expression> {
     let cond = parser.parse_expression(Precedence::First)?;
 
     let cons = parser.parse_expression(Precedence::First)?;
@@ -205,7 +205,7 @@ fn parse_if_expression(parser: &mut Parser) -> RoughResult<Expression> {
     }
 }
 
-fn parse_grouped_expression(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_grouped_expression(parser: &mut Parser<I>) -> RoughResult<Expression> {
     parser.next();
     let exp = parser.parse_expression(Precedence::First);
 
@@ -217,7 +217,7 @@ fn parse_grouped_expression(parser: &mut Parser) -> RoughResult<Expression> {
 }
 
 // TODO actually implement map part.
-fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_index_map_literal(parser: &mut Parser<I>) -> RoughResult<Expression> {
     let mut elems: Vec<Expression> = vec![];
 
     if parser.peek().map(|tok| tok.token_type) == Some(TokenType::RBracket) {
@@ -241,7 +241,7 @@ fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
     Ok(Expression::IndexMap(elems))
 }
 
-fn current_op_def(parser: &mut Parser, op_type: OperatorType) -> RoughResult<OperatorDefinition> {
+fn current_op_def(parser: &mut Parser<I>, op_type: OperatorType) -> RoughResult<OperatorDefinition> {
     let op_token: Token = parser.current_result()?;
 
     let op_ident = match op_token.token_type {
@@ -261,7 +261,7 @@ fn current_op_def(parser: &mut Parser, op_type: OperatorType) -> RoughResult<Ope
 }
 
 // Might need to figure out function calling here too.
-fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
+fn parse_prefix_expression(parser: &mut Parser<I>) -> RoughResult<Expression> {
     let op_def = current_op_def(parser, OperatorType::Prefix)?;
 
     parser.next();
@@ -270,7 +270,7 @@ fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
     Ok(Expression::Prefix(op_def, Box::new(right_exp)))
 }
 
-fn parse_infix_expression(parser: &mut Parser, left_exp: Expression) -> RoughResult<Expression> {
+fn parse_infix_expression(parser: &mut Parser<I>, left_exp: Expression) -> RoughResult<Expression> {
     let op_def = current_op_def(parser, OperatorType::Infix)?;
 
     parser.next();
@@ -280,8 +280,8 @@ fn parse_infix_expression(parser: &mut Parser, left_exp: Expression) -> RoughRes
     Ok(Expression::Infix(Box::new(left_exp), op_def, Box::new(right_exp)))
 }
 
-type PrefixParseFn = fn(parser: &mut Parser) -> RoughResult<Expression>;
-type InfixParseFn = fn(parser: &mut Parser, left_exp: Expression) -> RoughResult<Expression>;
+type PrefixParseFn = fn(parser: &mut Parser<I>) -> RoughResult<Expression>;
+type InfixParseFn = fn(parser: &mut Parser<I>, left_exp: Expression) -> RoughResult<Expression>;
 
 fn prefix_parse_lookup(token: &Token) -> RoughResult<PrefixParseFn> {
     let func = match token.token_type {
@@ -309,7 +309,7 @@ fn infix_parse_lookup(token: &Token) -> Option<InfixParseFn> {
 
 // I suppose not ignoring whitespace might break a lot of code currently.
 // Should deal with this sooner rather than later.
-fn ignored(token: Token) -> bool {
+fn ignored(token: &Token) -> bool {
     match token.token_type {
         TokenType::Comment(_) => true,
         TokenType::Space => true,

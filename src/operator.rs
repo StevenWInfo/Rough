@@ -4,6 +4,7 @@ use crate::token::TokenType;
 // Also, would like a way to use normal functions like operators (for a single instale like
 // Haskell).
 
+#[derive(Debug, PartialEq, Clone, PartialOrd)]
 pub enum Precedence {
     First = 0,
     Second,
@@ -24,6 +25,7 @@ pub fn reserved_precedences(token: &TokenType) -> Option<Precedence> {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum OperatorType {
     Prefix,
     Infix,
@@ -33,16 +35,11 @@ pub enum OperatorType {
 // Might use this for the evaluator too.
 // Could expand for things like lists, but is it really beneficial?
 // Could maybe parse expression looking for the next symbol in operator, but meh
+#[derive(Debug, PartialEq, Clone)]
 pub struct OperatorDefinition {
-    identifier: String,
-    op_type: OperatorType,
-    precedence: Precedence,
-}
-
-impl OperatorDefinition {
-    pub fn param_num(&self) {
-        self.infixes.len() + 1
-    }
+    pub identifier: String,
+    pub op_type: OperatorType,
+    pub precedence: Precedence,
 }
 
 // There must be some sort of taxonomy of syntactical constructs that organizes things like this.

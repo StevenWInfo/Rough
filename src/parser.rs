@@ -8,6 +8,7 @@ use std::iter::{ Peekable };
 pub struct Parser<'a> {
     // I want to have it just be the iterator, but the types for iterators are too annoying to deal
     // with right now. Figure it out later.
+    // (What was I using this field for again?)
     tokens: Vec<Token>,
     lexer: Peekable<Lexer<'a>>,
     //lexer: Peekable<Filter<'a>>,
@@ -21,18 +22,22 @@ static empty_early_error: RoughError = RoughError::new("Source ended before maki
 
 impl Parser<'_> {
     pub fn new(mut lex: Lexer, operators: Vec<OperatorDefinition>) -> Parser {
+        // Annoyances made me do this strange dance. Maybe clean up later
+        let tokens = lex.collect();
+
         let parser = Parser {
-            lexer: lex.peekable(),
-            tokens: lex.collect(),
+            lexer: tokens.iter().peekable(),
+            tokens: tokens,
             operators: operators,
-            errors: Vec::new(),
+            errors: lex.errors,
             cur_token: None,
         };
 
-        parser.next()
+        parser.next();
+        parser
     }
 
-    pub fn current_fail(&self) -> RoughResult<Token> {
+    pub fn current_result(&self) -> RoughResult<Token> {
         match self.cur_token {
             Some(token) => Ok(token),
             None => Err(vec![empty_early_error]),
@@ -40,12 +45,13 @@ impl Parser<'_> {
     }
 
     pub fn next(&mut self) {
-        let token = self.lexer.next();
-        if !ignored(token) {
-            self.cur_token = token;
-        } else {
-            self.next()
+        for token in self.lexer {
+            if !ignored(token) {
+                self.cur_token = token;
+                return ();
+            }
         }
+        self.cur_token = None;
     }
 
     fn peek(&self) -> Option<Token> {
@@ -61,7 +67,7 @@ impl Parser<'_> {
 
     fn next_if_equals(&mut self, expected: TokenType) -> bool {
         let equals = self.peek()
-            .map(|token| token?.token_type == expected)
+            .map(|token| token.token_type == expected)
             .unwrap_or(false);
 
         if equals {
@@ -80,10 +86,8 @@ impl Parser<'_> {
         }
     }
 
-    pub fn errors(&self) -> Vec<RoughError> {
-        let errors = self.lexer.errors.clone();
-        errors.append(self.errors.clone());
-        errors
+    pub fn get_errors(&self) -> Vec<RoughError> {
+        self.errors
     }
 
     pub fn parse_program(&mut self) -> RoughResult<Expression> {
@@ -107,7 +111,7 @@ impl Parser<'_> {
 
         // If it finds another Ident, it should assume a function call
         while self.peek().is_some() && precedence < self.token_precedence(&self.peek().unwrap()) {
-            let infix = match infix_parse_lookup(self.peek().unwrap()) {
+            let infix = match infix_parse_lookup(&self.peek().unwrap()) {
                 Some(infix_op) => infix_op,
                 // Is this ok in this implementation?
                 None => return Ok(exp),
@@ -121,7 +125,7 @@ impl Parser<'_> {
     }
 
     fn token_precedence(&self, token: &Token) -> Precedence {
-        if let Some(prec) = reserved_precedences(token.token_type) {
+        if let Some(prec) = reserved_precedences(&token.token_type) {
             return prec;
         }
 
@@ -137,14 +141,14 @@ impl Parser<'_> {
 }
 
 fn parse_number(parser: &mut Parser) -> RoughResult<Expression> {
-    match &parser.current()?.token_type {
+    match &parser.current_result()?.token_type {
         TokenType::Number(num) => Ok(Expression::Number(*num)),
         other => new_error(format!("Expected Number token, but got {}", other).to_string()),
     }
 }
 
 fn parse_string_literal(parser: &mut Parser) -> RoughResult<Expression> {
-    match &parser.current()?.token_type {
+    match &parser.current_result()?.token_type {
         TokenType::Str(string) => Ok(Expression::Str(string.to_string())),
         other => new_error(format!("Expected Str token, but got {}", other).to_string()),
     }
@@ -155,16 +159,16 @@ fn parse_function_parameters(parser: &mut Parser) -> RoughResult<Vec<String>> {
 
     parser.next();
 
-    match parser.current()?.token_type {
+    match parser.current_result()?.token_type {
         TokenType::Ident(name) => params.push(name.to_string()),
         other => return Err(vec![RoughError::new(format!("Function parameter expected an Ident token but was {}", other))]),
     }
 
-    while parser.peek()?.token_type == TokenType::Comma {
+    while parser.peek().map(|tok| tok.token_type) == Some(TokenType::Comma) {
         parser.next();
         parser.next();
 
-        let current = parser.current()?;
+        let current = parser.current_result()?;
 
         if let TokenType::Ident(name) = current.token_type {
             params.push(name.to_string())
@@ -182,7 +186,7 @@ fn parse_function_literal(parser: &mut Parser) -> RoughResult<Expression> {
     Ok(
         Expression::Function(
             parse_function_parameters(parser)?,
-            parser.parse_expression(Precedence::First)?
+            Box::new(parser.parse_expression(Precedence::First)?)
             )
       )
 }
@@ -193,7 +197,7 @@ fn parse_if_expression(parser: &mut Parser) -> RoughResult<Expression> {
     let cons = parser.parse_expression(Precedence::First)?;
 
     match parser.lexer.peek() {
-        Some(token) if token?.token_type == TokenType::Else => {
+        Some(token) if token.token_type == TokenType::Else => {
             let parsed_else = parser.parse_expression(Precedence::First)?;
             Ok(Expression::If(Box::new(cond), Box::new(cons), Some(Box::new(parsed_else))))
         },
@@ -203,14 +207,11 @@ fn parse_if_expression(parser: &mut Parser) -> RoughResult<Expression> {
 
 fn parse_grouped_expression(parser: &mut Parser) -> RoughResult<Expression> {
     parser.next();
-    let exp = parser.parse_expression(Precedence::First)?;
+    let exp = parser.parse_expression(Precedence::First);
 
-    let current = parser.current()?;
+    let current = parser.current_result()?;
 
-    match current.token_type {
-        TokenType::RParen => parser.next(),
-        other => return Err(vec![RoughError::new(format!("Expected right paren at the end of expression, got {}", other))])
-    };
+    parser.next_if_equals_result(TokenType::RParen)?;
 
     exp
 }
@@ -219,7 +220,7 @@ fn parse_grouped_expression(parser: &mut Parser) -> RoughResult<Expression> {
 fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
     let mut elems: Vec<Expression> = vec![];
 
-    if parser.peek()?.token_type == TokenType::RBracket {
+    if parser.peek().map(|tok| tok.token_type) == Some(TokenType::RBracket) {
         parser.next();
         return Ok(Expression::IndexMap(elems))
     }
@@ -228,11 +229,11 @@ fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
 
     elems.push(parser.parse_expression(Precedence::First)?);
 
-    while parser.peek()?.token_type == TokenType::Comma {
+    while parser.peek().map(|tok|tok.token_type == TokenType::Comma).unwrap_or(false) {
         parser.next();
         parser.next();
 
-        elems.push(parser.parse_expression(Precedence::Frist)?);
+        elems.push(parser.parse_expression(Precedence::First)?);
     }
 
     parser.next_if_equals_result(TokenType::RBracket)?;
@@ -242,7 +243,7 @@ fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
 
 // Might need to figure out function calling here too.
 fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
-    let op_token: Token = parser.current()?;
+    let op_token: Token = parser.current_result()?;
 
     let op_start = match op_token.token_type {
         TokenType::Ident(name) => name,
@@ -260,17 +261,26 @@ fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
 }
 
 fn parse_infix_expression(parser: &mut Parser, left_exp: Expression) -> RoughResult<Expression> {
-    let op_token: Token = parser.current()?;
+    let op_ident = match parser.current_result()?.token_type {
+        TokenType::Ident(op_ident) => op_ident,
+        other => return new_error(format!("Expected ident token, got {}", other)),
+    };
 
-    let op_def = parser.operators
-        .filter_map(|op| op.infix)
-        .find(|op| op.name == op_token);
+    let op_def_option = parser.operators
+        .iter()
+        .filter(|op| op.op_type == OperatorType::Infix)
+        .find(|op| op.identifier == op_ident);
+
+    let op_def = match op_def_option {
+        Some(op_def) => op_def,
+        None => return new_error(format!("Could not find a defined operator that matched {}", op_ident))
+    };
 
     parser.next();
 
-    let right_exp = parser.parse_expression(op_def.precedence);
-    
-    Ok(Expression::Infix(Box::new(left_exp), op_def, Box::new(right_exp)))
+    let right_exp = parser.parse_expression(op_def.precedence)?;
+
+    Ok(Expression::Infix(Box::new(left_exp), *op_def, Box::new(right_exp)))
 }
 
 type PrefixParseFn = fn(parser: &mut Parser) -> RoughResult<Expression>;

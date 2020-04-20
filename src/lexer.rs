@@ -1,5 +1,5 @@
 use crate::token::{ TokenType, Token };
-use crate::error::{ RoughError, RoughResult, new_error };
+use crate::error::{ RoughError, RoughResult };
 use std::str::CharIndices;
 use std::iter::Peekable;
 
@@ -7,7 +7,7 @@ use std::iter::Peekable;
 pub struct Lexer<'a> {
     source: &'a str,
     source_iter: Peekable<CharIndices<'a>>,
-    errors: Vec<RoughError>,
+    pub errors: Vec<RoughError>,
 }
 
 impl Lexer<'_> {
@@ -15,6 +15,7 @@ impl Lexer<'_> {
         Lexer {
             source: input,
             source_iter: input.char_indices().peekable(),
+            errors: Vec::new(),
         }
     }
 
@@ -104,8 +105,8 @@ impl Lexer<'_> {
         Ok(comment.to_string())
     }
 
-    fn handle_error(&mut self, error: RoughError) -> Option<Token> {
-        self.errors.push(error);
+    fn handle_error(&mut self, errors: Vec<RoughError>) -> Option<Token> {
+        self.errors.append(error.clone());
         self.next()
     }
 }
@@ -128,7 +129,7 @@ impl Iterator for Lexer<'_> {
             '|' => TokenType::Pipe,
             '#' => match self.read_comment() {
                 Ok(comment) => TokenType::Comment(comment),
-                error => return self.handle_error(error),
+                Err(error) => return self.handle_error(error),
             }
             '\n' => {
                 if let Some((_, '\r')) = self.source_iter.peek() {
@@ -163,21 +164,28 @@ impl Iterator for Lexer<'_> {
             // TODO escaping double quotes
             '"' => match self.read_string() {
                 Ok(string) => TokenType::Str(string),
-                error => return self.handle_error(error),
+                Err(error) => return self.handle_error(error),
             },
 
             other if is_op_char(other) => match self.read_operator(other) {
                 Ok(op) => TokenType::Operator(op),
-                error => return self.handle_error(error),
+                Err(error) => return self.handle_error(error),
             },
 
             other if other.is_ascii_digit() => TokenType::Number(self.read_number(other)),
                 
             other if is_letter(other) => lookup_ident(self.read_identifier(other)),
 
-            other => {
-                return self.handle_error(new_error(format!("Lexer error with character {}", other)));
-            }
+            other => return self.handle_error(
+                RoughError::new(
+                    vec![
+                    format!(
+                        "Lexer error with character {}",
+                        other
+                        )
+                    ]
+                    )
+                )
         };
 
         Some(Token::new(token_type, start))

@@ -7,7 +7,7 @@
 // This might change quite a bit.
 // Might have more than one error type.
 // Might have a list of messages, errors, etc.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RoughError {
     msg: String,
 }

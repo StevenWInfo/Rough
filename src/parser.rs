@@ -241,18 +241,28 @@ fn parse_index_map_literal(parser: &mut Parser) -> RoughResult<Expression> {
     Ok(Expression::IndexMap(elems))
 }
 
-// Might need to figure out function calling here too.
-fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
+fn current_op_def(parser: &mut Parser, op_type: OperatorType) -> RoughResult<OperatorDefinition> {
     let op_token: Token = parser.current_result()?;
 
-    let op_start = match op_token.token_type {
-        TokenType::Ident(name) => name,
+    let op_ident = match op_token.token_type {
+        TokenType::Ident(op_ident) => op_ident,
         other => return Err(vec![RoughError::new(format!("Should be an Ident token but got {}. Not sure how it even got here.", other))]),
     };
 
-    let op_def = parser.operators
-        .filter(|op| op.op_type == OperatorType::Prefix)
-        .find(|op| op.name == op_start);
+    let op_def_option = parser.operators
+        .iter()
+        .filter(|op| op.op_type == op_type)
+        .find(|op| op.identifier == op_ident);
+
+    match op_def_option {
+        Some(op_def) => Ok(*op_def),
+        None => return new_error(format!("Could not find a defined operator that matched {}", op_ident))
+    }
+}
+
+// Might need to figure out function calling here too.
+fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
+    let op_def = current_op_def(parser, OperatorType::Prefix)?;
 
     parser.next();
 
@@ -261,26 +271,13 @@ fn parse_prefix_expression(parser: &mut Parser) -> RoughResult<Expression> {
 }
 
 fn parse_infix_expression(parser: &mut Parser, left_exp: Expression) -> RoughResult<Expression> {
-    let op_ident = match parser.current_result()?.token_type {
-        TokenType::Ident(op_ident) => op_ident,
-        other => return new_error(format!("Expected ident token, got {}", other)),
-    };
-
-    let op_def_option = parser.operators
-        .iter()
-        .filter(|op| op.op_type == OperatorType::Infix)
-        .find(|op| op.identifier == op_ident);
-
-    let op_def = match op_def_option {
-        Some(op_def) => op_def,
-        None => return new_error(format!("Could not find a defined operator that matched {}", op_ident))
-    };
+    let op_def = current_op_def(parser, OperatorType::Infix)?;
 
     parser.next();
 
     let right_exp = parser.parse_expression(op_def.precedence)?;
 
-    Ok(Expression::Infix(Box::new(left_exp), *op_def, Box::new(right_exp)))
+    Ok(Expression::Infix(Box::new(left_exp), op_def, Box::new(right_exp)))
 }
 
 type PrefixParseFn = fn(parser: &mut Parser) -> RoughResult<Expression>;

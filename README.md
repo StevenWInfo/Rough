@@ -1,5 +1,7 @@
 # Rough
 
+*An unfinished toy project.*
+
 A programming language made only for scripts (tagline is a work in progress)
 
 ## Status
